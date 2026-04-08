@@ -2,131 +2,174 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Vente aux enchères</title>
+<title>Enchères Live</title>
 <style>
-  body { font-family: Arial, sans-serif; background: #f0f0f0; padding: 20px; }
-  .container { max-width: 600px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px #aaa; }
-  input, button { padding: 10px; margin: 5px 0; width: 100%; font-size: 1em; }
-  #messages { border: 1px solid #ccc; height: 150px; overflow-y: auto; padding: 5px; margin-top: 10px; background: #fafafa; }
+  body { font-family: Arial; background: #f7f7f7; padding: 20px; }
+  .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0px 0px 10px #ccc; }
+  input, button { width: 100%; padding: 10px; margin: 5px 0; font-size: 1rem; }
+  #messages, #players { border: 1px solid #ccc; height: 150px; overflow-y: auto; padding: 10px; background: #fafafa; }
   .hidden { display: none; }
 </style>
 </head>
 <body>
 <div class="container">
-  <h2>Vente aux enchères</h2>
+  <h2>Enchères Live</h2>
 
   <div id="setup">
-    <button id="createRoom">Créer une salle</button>
-    <input type="text" id="joinCode" placeholder="Entrer le code de la salle">
-    <button id="joinRoom">Rejoindre une salle</button>
+    <input type="text" id="userName" placeholder="Entrez votre pseudo">
+    <button id="createRoomBtn">Créer Salle</button>
+    <input type="text" id="joinCode" placeholder="Code de salle (4 chiffres)">
+    <button id="joinRoomBtn">Rejoindre Salle</button>
   </div>
 
-  <div id="auctionRoom" class="hidden">
-    <p>Salle : <span id="roomId"></span></p>
-    <p>Objet : <span id="itemText">Pas encore choisi</span></p>
-    <p>Dernière enchère : <span id="lastBid">0</span> €</p>
-    
-    <div id="participantControls">
-      <input type="number" id="bidInput" placeholder="Votre enchère (plus que la dernière)">
-      <button id="placeBid">Proposer</button>
+  <div id="auctionUI" class="hidden">
+    <p>Salle : <span id="roomCodeDisplay"></span></p>
+    <p>Objet : <span id="itemName">Aucun objet</span></p>
+    <p>Dernière enchère : <span id="currentBid">0</span> €</p>
+
+    <div id="playerControls" class="hidden">
+      <input type="number" id="bidAmount" placeholder="Ton enchère">
+      <button id="placeBidBtn">Proposer</button>
     </div>
 
     <div id="managerControls" class="hidden">
-      <input type="text" id="newItem" placeholder="Nom de l'objet">
-      <button id="announceItem">Annonce objet</button>
-      <button id="stopAuction">Stop enchères</button>
+      <input type="text" id="newItemName" placeholder="Nom de l'objet">
+      <button id="announceItemBtn">Annonce Objet</button>
+      <button id="stopAuctionBtn">Stop Enchères</button>
     </div>
+
+    <h3>Joueurs connectés :</h3>
+    <div id="players"></div>
 
     <div id="messages"></div>
   </div>
 </div>
 
-<script>
-// === STOCKAGE EN MEMOIRE ===
-let rooms = {}; // Toutes les salles
-let myRoom = null;
-let isManager = false;
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+import { getDatabase, ref, set, get, update, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-database.js";
 
-function addMessage(msg){
-  const div = document.getElementById('messages');
-  div.innerHTML += msg + '<br>';
-  div.scrollTop = div.scrollHeight;
+// 🔧 Config Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyAtQO7VCsE3QInt1BzjjDfv6Ig621x5lGU",
+  authDomain: "encheres-405e0.firebaseapp.com",
+  databaseURL: "https://encheres-405e0-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "encheres-405e0",
+  storageBucket: "encheres-405e0.firebasestorage.app",
+  messagingSenderId: "432915114801",
+  appId: "1:432915114801:web:d84ad61b1461bd33f79e10",
+  measurementId: "G-LKEWRVCNEK"
+};
+
+// 🔧 Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+// Variables
+let roomCode = null;
+let isManager = false;
+let userName = "";
+
+const messages = document.getElementById("messages");
+const playersDiv = document.getElementById("players");
+
+function log(msg) {
+  messages.innerHTML += msg + "<br>";
+  messages.scrollTop = messages.scrollHeight;
 }
 
-// === CREATION SALLE ===
-document.getElementById('createRoom').addEventListener('click', () => {
-  const code = Math.floor(1000 + Math.random()*9000);
-  rooms[code] = { bids: [], item: 'Pas encore choisi', lastBid: 0, auctionOpen: true };
-  myRoom = code;
+function generateCode() {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+// Mettre à jour la liste des joueurs
+function updatePlayers() {
+  onValue(ref(db, `rooms/${roomCode}/players`), snapshot => {
+    const data = snapshot.val() || {};
+    playersDiv.innerHTML = Object.values(data).map(name => name).join("<br>");
+  });
+}
+
+// Créer salle
+document.getElementById("createRoomBtn").onclick = async () => {
+  userName = document.getElementById("userName").value.trim();
+  if (!userName) return alert("Entrez un pseudo");
+
+  roomCode = generateCode();
   isManager = true;
-  document.getElementById('roomId').textContent = code;
-  document.getElementById('itemText').textContent = rooms[code].item;
-  document.getElementById('lastBid').textContent = rooms[code].lastBid;
-  document.getElementById('setup').classList.add('hidden');
-  document.getElementById('auctionRoom').classList.remove('hidden');
-  document.getElementById('managerControls').classList.remove('hidden');
-  document.getElementById('participantControls').classList.add('hidden');
-  addMessage('Salle créée ! Vous êtes le gérant.');
-});
 
-// === REJOINDRE SALLE ===
-document.getElementById('joinRoom').addEventListener('click', () => {
-  const code = document.getElementById('joinCode').value;
-  if(rooms[code]){
-    myRoom = code;
-    isManager = false;
-    document.getElementById('roomId').textContent = code;
-    document.getElementById('itemText').textContent = rooms[code].item;
-    document.getElementById('lastBid').textContent = rooms[code].lastBid;
-    document.getElementById('setup').classList.add('hidden');
-    document.getElementById('auctionRoom').classList.remove('hidden');
-    document.getElementById('participantControls').classList.remove('hidden');
-    document.getElementById('managerControls').classList.add('hidden');
-    addMessage('Vous avez rejoint la salle !');
-  } else {
-    alert('Salle introuvable.');
-  }
-});
+  await set(ref(db, "rooms/" + roomCode), { item: "Pas encore choisi", currentBid: 0, auctionOpen: true, players: { [userName]: userName } });
+  showAuctionUI();
 
-// === PLACER UNE ENCHERE PARTICIPANT ===
-document.getElementById('placeBid').addEventListener('click', () => {
-  if(!myRoom) return;
-  const bid = parseFloat(document.getElementById('bidInput').value);
-  const room = rooms[myRoom];
-  if(!room.auctionOpen) { alert('Enchères terminées'); return; }
-  if(isNaN(bid) || bid <= room.lastBid){
-    alert('L\'enchère doit être supérieure à la dernière (' + room.lastBid + ' €)');
-    return;
-  }
-  room.lastBid = bid;
-  room.bids.push({ bid, user: 'Participant' });
-  document.getElementById('lastBid').textContent = room.lastBid;
-  addMessage('Participant propose : ' + bid + ' €');
-  document.getElementById('bidInput').value = '';
-});
+  // Supprimer le joueur si il se déconnecte
+  onDisconnect(ref(db, `rooms/${roomCode}/players/${userName}`)).remove();
 
-// === CONTROLES GERANT ===
-document.getElementById('announceItem').addEventListener('click', () => {
-  const item = document.getElementById('newItem').value;
-  if(!item) return;
-  rooms[myRoom].item = item;
-  document.getElementById('itemText').textContent = item;
-  addMessage('Gérant annonce : ' + item);
-  document.getElementById('newItem').value = '';
-});
+  log("Salle créée ! Code : " + roomCode);
+};
 
-document.getElementById('stopAuction').addEventListener('click', () => {
-  rooms[myRoom].auctionOpen = false;
-  addMessage('Gérant a stoppé les enchères ! Objet vendu à ' + rooms[myRoom].lastBid + ' €');
-});
+// Rejoindre salle
+document.getElementById("joinRoomBtn").onclick = async () => {
+  userName = document.getElementById("userName").value.trim();
+  if (!userName) return alert("Entrez un pseudo");
 
-// === AUTO RAFRAICHISSEMENT POUR SIMULER MULTI-JOUEUR ===
-setInterval(() => {
-  if(!myRoom) return;
-  const room = rooms[myRoom];
-  document.getElementById('lastBid').textContent = room.lastBid;
-  document.getElementById('itemText').textContent = room.item;
-}, 1000);
+  const code = document.getElementById("joinCode").value.trim();
+  const snapshot = await get(ref(db, "rooms/" + code));
+  if (!snapshot.exists()) return alert("Salle introuvable");
+
+  roomCode = code;
+  isManager = false;
+
+  // Ajouter le joueur à la liste
+  await set(ref(db, `rooms/${roomCode}/players/${userName}`), userName);
+
+  // Supprimer le joueur si il se déconnecte
+  onDisconnect(ref(db, `rooms/${roomCode}/players/${userName}`)).remove();
+
+  showAuctionUI();
+  log("Tu as rejoint la salle " + code);
+};
+
+// Afficher l'UI d'enchères
+function showAuctionUI() {
+  document.getElementById("setup").classList.add("hidden");
+  document.getElementById("auctionUI").classList.remove("hidden");
+  document.getElementById("roomCodeDisplay").textContent = roomCode;
+  if (isManager) document.getElementById("managerControls").classList.remove("hidden");
+  else document.getElementById("playerControls").classList.remove("hidden");
+
+  updatePlayers();
+
+  // Écoute en temps réel pour les enchères et l'objet
+  onValue(ref(db, "rooms/" + roomCode), snapshot => {
+    const data = snapshot.val();
+    if (!data) return;
+    document.getElementById("itemName").textContent = data.item;
+    document.getElementById("currentBid").textContent = data.currentBid;
+  });
+}
+
+// Gérant annonce un objet
+document.getElementById("announceItemBtn").onclick = async () => {
+  const it = document.getElementById("newItemName").value.trim();
+  if (!it) return;
+  await update(ref(db, "rooms/" + roomCode), { item: it });
+  log("Objet annoncé : " + it);
+};
+
+// Gérant stoppe les enchères
+document.getElementById("stopAuctionBtn").onclick = async () => {
+  await update(ref(db, "rooms/" + roomCode), { auctionOpen: false });
+  log("Enchères terminées !");
+};
+
+// Joueur propose une enchère
+document.getElementById("placeBidBtn").onclick = async () => {
+  const bid = parseFloat(document.getElementById("bidAmount").value);
+  const snapshot = await get(ref(db, "rooms/" + roomCode));
+  const data = snapshot.val();
+  if (!data || !data.auctionOpen) return alert("Enchères fermées");
+  if (isNaN(bid) || bid <= data.currentBid) return alert("Tu dois proposer plus que " + data.currentBid + " €");
+  await update(ref(db, "rooms/" + roomCode), { currentBid: bid });
+  log(userName + " propose : " + bid + " €");
+};
 </script>
-</body>
-</html>
