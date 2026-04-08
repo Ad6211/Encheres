@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Vente aux enchères en salle</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #f0f0f0; padding: 20px; }
+  .container { max-width: 600px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px #aaa; }
+  input, button { padding: 10px; margin: 5px 0; width: 100%; font-size: 1em; }
+  #messages { border: 1px solid #ccc; height: 150px; overflow-y: auto; padding: 5px; margin-top: 10px; background: #fafafa; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h2>Vente aux enchères</h2>
+  
+  <div id="setup">
+    <button id="createRoom">Créer une salle</button>
+    <input type="text" id="joinCode" placeholder="Entrer le code de la salle">
+    <button id="joinRoom">Rejoindre une salle</button>
+  </div>
+  
+  <div id="auctionRoom" class="hidden">
+    <p>Salle : <span id="roomId"></span></p>
+    <p>Objet en vente : <span id="itemText">Pas encore d'objet</span></p>
+    <input type="text" id="bidInput" placeholder="Votre enchère">
+    <button id="placeBid">Proposer</button>
+    <div id="messages"></div>
+  </div>
+</div>
+
+<script>
+let rooms = {}; // objet qui stocke les salles en mémoire (simple simulation)
+let myRoom = null;
+let isManager = false;
+
+function addMessage(msg){
+  const div = document.getElementById('messages');
+  div.innerHTML += msg + '<br>';
+  div.scrollTop = div.scrollHeight;
+}
+
+// Créer une salle
+document.getElementById('createRoom').addEventListener('click', () => {
+  const code = Math.floor(1000 + Math.random()*9000); // code 4 chiffres
+  rooms[code] = { bids: [], item: 'Objet mystérieux', manager: true };
+  myRoom = code;
+  isManager = true;
+  document.getElementById('roomId').textContent = code;
+  document.getElementById('itemText').textContent = rooms[code].item;
+  document.getElementById('setup').classList.add('hidden');
+  document.getElementById('auctionRoom').classList.remove('hidden');
+  addMessage('Salle créée ! Vous êtes le gérant.');
+});
+
+// Rejoindre une salle
+document.getElementById('joinRoom').addEventListener('click', () => {
+  const code = document.getElementById('joinCode').value;
+  if(rooms[code]){
+    myRoom = code;
+    isManager = false;
+    document.getElementById('roomId').textContent = code;
+    document.getElementById('itemText').textContent = rooms[code].item;
+    document.getElementById('setup').classList.add('hidden');
+    document.getElementById('auctionRoom').classList.remove('hidden');
+    addMessage('Vous avez rejoint la salle !');
+  } else {
+    alert('Salle introuvable.');
+  }
+});
+
+// Placer une enchère
+document.getElementById('placeBid').addEventListener('click', () => {
+  const bid = parseFloat(document.getElementById('bidInput').value);
+  if(isNaN(bid)) { alert('Entrer un nombre valide'); return; }
+  rooms[myRoom].bids.push({ bid, user: isManager ? 'Gérant' : 'Participant' });
+  addMessage((isManager ? 'Gérant' : 'Participant') + ' propose : ' + bid + ' €');
+  document.getElementById('bidInput').value = '';
+});
+
+// Mise à jour objet (seulement pour le manager)
+if(isManager){
+  setInterval(() => {
+    rooms[myRoom].item = 'Objet aléatoire #' + Math.floor(Math.random()*100);
+    document.getElementById('itemText').textContent = rooms[myRoom].item;
+  }, 10000);
+}
+</script>
+</body>
+</html>
