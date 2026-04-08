@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Vente aux enchères en salle</title>
+<title>Vente aux enchères</title>
 <style>
   body { font-family: Arial, sans-serif; background: #f0f0f0; padding: 20px; }
   .container { max-width: 600px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px #aaa; }
@@ -14,24 +14,36 @@
 <body>
 <div class="container">
   <h2>Vente aux enchères</h2>
-  
+
   <div id="setup">
     <button id="createRoom">Créer une salle</button>
     <input type="text" id="joinCode" placeholder="Entrer le code de la salle">
     <button id="joinRoom">Rejoindre une salle</button>
   </div>
-  
+
   <div id="auctionRoom" class="hidden">
     <p>Salle : <span id="roomId"></span></p>
-    <p>Objet en vente : <span id="itemText">Pas encore d'objet</span></p>
-    <input type="text" id="bidInput" placeholder="Votre enchère">
-    <button id="placeBid">Proposer</button>
+    <p>Objet : <span id="itemText">Pas encore choisi</span></p>
+    <p>Dernière enchère : <span id="lastBid">0</span> €</p>
+    
+    <div id="participantControls">
+      <input type="number" id="bidInput" placeholder="Votre enchère (plus que la dernière)">
+      <button id="placeBid">Proposer</button>
+    </div>
+
+    <div id="managerControls" class="hidden">
+      <input type="text" id="newItem" placeholder="Nom de l'objet">
+      <button id="announceItem">Annonce objet</button>
+      <button id="stopAuction">Stop enchères</button>
+    </div>
+
     <div id="messages"></div>
   </div>
 </div>
 
 <script>
-let rooms = {}; // objet qui stocke les salles en mémoire (simple simulation)
+// === STOCKAGE EN MEMOIRE ===
+let rooms = {}; // Toutes les salles
 let myRoom = null;
 let isManager = false;
 
@@ -41,20 +53,23 @@ function addMessage(msg){
   div.scrollTop = div.scrollHeight;
 }
 
-// Créer une salle
+// === CREATION SALLE ===
 document.getElementById('createRoom').addEventListener('click', () => {
-  const code = Math.floor(1000 + Math.random()*9000); // code 4 chiffres
-  rooms[code] = { bids: [], item: 'Objet mystérieux', manager: true };
+  const code = Math.floor(1000 + Math.random()*9000);
+  rooms[code] = { bids: [], item: 'Pas encore choisi', lastBid: 0, auctionOpen: true };
   myRoom = code;
   isManager = true;
   document.getElementById('roomId').textContent = code;
   document.getElementById('itemText').textContent = rooms[code].item;
+  document.getElementById('lastBid').textContent = rooms[code].lastBid;
   document.getElementById('setup').classList.add('hidden');
   document.getElementById('auctionRoom').classList.remove('hidden');
+  document.getElementById('managerControls').classList.remove('hidden');
+  document.getElementById('participantControls').classList.add('hidden');
   addMessage('Salle créée ! Vous êtes le gérant.');
 });
 
-// Rejoindre une salle
+// === REJOINDRE SALLE ===
 document.getElementById('joinRoom').addEventListener('click', () => {
   const code = document.getElementById('joinCode').value;
   if(rooms[code]){
@@ -62,30 +77,56 @@ document.getElementById('joinRoom').addEventListener('click', () => {
     isManager = false;
     document.getElementById('roomId').textContent = code;
     document.getElementById('itemText').textContent = rooms[code].item;
+    document.getElementById('lastBid').textContent = rooms[code].lastBid;
     document.getElementById('setup').classList.add('hidden');
     document.getElementById('auctionRoom').classList.remove('hidden');
+    document.getElementById('participantControls').classList.remove('hidden');
+    document.getElementById('managerControls').classList.add('hidden');
     addMessage('Vous avez rejoint la salle !');
   } else {
     alert('Salle introuvable.');
   }
 });
 
-// Placer une enchère
+// === PLACER UNE ENCHERE PARTICIPANT ===
 document.getElementById('placeBid').addEventListener('click', () => {
+  if(!myRoom) return;
   const bid = parseFloat(document.getElementById('bidInput').value);
-  if(isNaN(bid)) { alert('Entrer un nombre valide'); return; }
-  rooms[myRoom].bids.push({ bid, user: isManager ? 'Gérant' : 'Participant' });
-  addMessage((isManager ? 'Gérant' : 'Participant') + ' propose : ' + bid + ' €');
+  const room = rooms[myRoom];
+  if(!room.auctionOpen) { alert('Enchères terminées'); return; }
+  if(isNaN(bid) || bid <= room.lastBid){
+    alert('L\'enchère doit être supérieure à la dernière (' + room.lastBid + ' €)');
+    return;
+  }
+  room.lastBid = bid;
+  room.bids.push({ bid, user: 'Participant' });
+  document.getElementById('lastBid').textContent = room.lastBid;
+  addMessage('Participant propose : ' + bid + ' €');
   document.getElementById('bidInput').value = '';
 });
 
-// Mise à jour objet (seulement pour le manager)
-if(isManager){
-  setInterval(() => {
-    rooms[myRoom].item = 'Objet aléatoire #' + Math.floor(Math.random()*100);
-    document.getElementById('itemText').textContent = rooms[myRoom].item;
-  }, 10000);
-}
+// === CONTROLES GERANT ===
+document.getElementById('announceItem').addEventListener('click', () => {
+  const item = document.getElementById('newItem').value;
+  if(!item) return;
+  rooms[myRoom].item = item;
+  document.getElementById('itemText').textContent = item;
+  addMessage('Gérant annonce : ' + item);
+  document.getElementById('newItem').value = '';
+});
+
+document.getElementById('stopAuction').addEventListener('click', () => {
+  rooms[myRoom].auctionOpen = false;
+  addMessage('Gérant a stoppé les enchères ! Objet vendu à ' + rooms[myRoom].lastBid + ' €');
+});
+
+// === AUTO RAFRAICHISSEMENT POUR SIMULER MULTI-JOUEUR ===
+setInterval(() => {
+  if(!myRoom) return;
+  const room = rooms[myRoom];
+  document.getElementById('lastBid').textContent = room.lastBid;
+  document.getElementById('itemText').textContent = room.item;
+}, 1000);
 </script>
 </body>
 </html>
